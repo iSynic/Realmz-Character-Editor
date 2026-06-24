@@ -550,6 +550,8 @@ const resourcePaths = [
   path.join(dataRoot, 'Data Files', 'Data Caste.rsrc'),
   path.join(dataRoot, 'Data Files', 'Data S.rsrc'),
   path.join(dataRoot, 'Data Files', 'Custom Names.rsrc'),
+  path.join(sourceDataRoot, 'Scenarios', 'City of Bywater', 'Scenario.rsrc'),
+  path.join(dataRoot, 'Scenarios', 'City of Bywater', 'Scenario.rsrc'),
   path.join(dataRoot, 'Data PC', 'Character Editor Resources.rsf'),
   path.join(dataRoot, 'Data PC', 'realmz.rsrc.rsf'),
   path.join(realmzRoot, 'resources', 'realmz.rsrc'),
