@@ -9,7 +9,7 @@ test('uploads, edits, and downloads a Realmz character', async ({ page }) => {
   test.skip(!fs.existsSync(traskPath), `Realmz fixture not found at ${traskPath}`)
 
   await page.goto('./')
-  await page.getByLabel('Upload character file').setInputFiles(traskPath)
+  await page.locator('input[type="file"]').setInputFiles(traskPath)
   await expect(page.getByText(/Opened Traskelion/)).toBeVisible()
   await page.getByRole('button', { name: 'Level Up' }).click()
   await expect(page.getByText(/Leveled Traskelion to level/)).toBeVisible()
