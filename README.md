@@ -49,8 +49,15 @@ The extractor defaults to `F:\Realmz` and can be pointed elsewhere with
 
 ## GitHub Pages
 
-The app is hostable as a static site. For a project Pages URL, the Vite `base`
-setting and public asset URL construction should be adjusted before deployment.
+The app is deployed as a static GitHub Pages site at:
+
+```text
+https://isynic.github.io/Realmz-Character-Editor/
+```
+
+Repository Settings -> Pages should use `GitHub Actions` as the build and
+deployment source. The Vite `base` setting is configured for the project Pages
+path above; if the site moves to a custom domain, change `base` back to `/`.
 
 ## Realmz Material Notice
 
