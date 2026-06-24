@@ -31,8 +31,6 @@ npm ci
 npm run dev
 ```
 
-Some tests use real character fixtures from a local Realmz checkout. By default the project looks for `F:\Realmz`; set `REALMZ_ROOT` to point somewhere else. Fixture-dependent tests skip cleanly when those files are not available.
-
 ## GitHub Pages
 
 This repository deploys through GitHub Actions Pages. Repository Settings -> Pages should use `GitHub Actions` as the source.
