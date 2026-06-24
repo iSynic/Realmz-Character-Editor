@@ -1,6 +1,19 @@
-import { itemById, spellFor } from './metadata'
+import { casteProfileById, itemById, raceProfileById, spellFor } from './metadata'
 import { clampSigned, refreshVerification } from './characterFile'
-import { MAX_ITEMS, SPELL_LEVELS, SPELLS_PER_LEVEL, type CharacterRecord, type ItemEntry } from './types'
+import { MAX_ITEMS, SPELL_LEVELS, SPELLS_PER_LEVEL, type CasteProfile, type CharacterRecord, type ItemEntry } from './types'
+
+export interface LevelUpResult {
+  level: number
+  staminaGain: number
+  spellpointsGain: number
+  magresGain: number
+  tohitGain: number
+  missileGain: number
+  victoryPointsSpent: number
+}
+
+const harmfulConditionIndexes = new Set([0, 1, 2, 3, 5, 6, 9, 25, 26, 27, 28, 29, 34, 36, 37, 39])
+const signedBonusConditionIndexes = new Set([32, 38])
 
 export function applyCharacterMutation(record: CharacterRecord, mutate: (draft: CharacterRecord) => void): CharacterRecord {
   const draft = structuredClone(record)
@@ -37,6 +50,105 @@ export function setSpellpointsMax(record: CharacterRecord, value: number): void 
     record.spellpoints = 0
   } else if (record.spellpoints > record.spellpointsmax) {
     record.spellpoints = record.spellpointsmax
+  }
+}
+
+export function isBadConditionValue(index: number, value: number): boolean {
+  if (harmfulConditionIndexes.has(index)) {
+    return value !== 0
+  }
+  if (signedBonusConditionIndexes.has(index)) {
+    return value < 0
+  }
+  return false
+}
+
+export function clearBadEffects(record: CharacterRecord): number {
+  let cleared = 0
+  for (let index = 0; index < record.condition.length; index++) {
+    if (isBadConditionValue(index, record.condition[index])) {
+      record.condition[index] = 0
+      cleared++
+    }
+  }
+  return cleared
+}
+
+export function levelUpCharacter(record: CharacterRecord, rng: () => number = Math.random): LevelUpResult | null {
+  const race = raceProfileById(record.race)
+  const caste = casteProfileById(record.caste)
+  if (!race || !caste || record.level >= 1000) {
+    return null
+  }
+
+  const previousLevel = record.level
+  const victoryIndex = clampSigned(previousLevel, 1, 30) - 1
+  const victoryPointsSpent = caste.victory[victoryIndex] ?? 0
+  record.exp = clampSigned(record.exp - victoryPointsSpent, -2147483648, 2147483647)
+  record.level = clampSigned(record.level + 1, 0, 1000)
+
+  let normattacks = (race.numOfAttacks[0] ?? 0) + caste.bonusAttacks
+  for (const attackLevel of caste.attacks) {
+    if (attackLevel !== 0 && attackLevel <= record.level) {
+      normattacks++
+    }
+  }
+  const raceAttackCap = 2 * (race.numOfAttacks[1] ?? 0)
+  if (normattacks > raceAttackCap) {
+    normattacks = raceAttackCap
+  }
+  record.normattacks = Math.min(normattacks, 12)
+
+  for (let index = 0; index < record.condition.length; index++) {
+    if (caste.conditions[index] === record.level) {
+      record.condition[index] = record.condition[index] > -1 ? -1 : record.condition[index] - 1
+    }
+  }
+
+  const tohitGain = caste.tohit[1] ?? 0
+  record.tohit += tohitGain
+  record.dodge += (caste.dodge[1] ?? 0)
+  record.handtohand += (caste.hand2hand[1] ?? 0)
+  const missileGain = caste.missile[1] ? realmzRand(caste.missile[1], rng) : 0
+  record.missile += missileGain
+
+  if (caste.spellcasters[0]?.[1]) {
+    record.spellcastertype = 1
+  } else if (caste.spellcasters[1]?.[1]) {
+    record.spellcastertype = 2
+  } else if (caste.spellcasters[2]?.[1]) {
+    record.spellcastertype = 3
+  }
+
+  const spellpointsGain = spellpointsForLevelUp(record, caste, rng)
+  record.spellpoints += spellpointsGain
+  record.spellpointsmax += spellpointsGain
+
+  const staminaRoll = realmzRand(caste.stamina[1] ?? 0, rng)
+  let staminaBonus = 0
+  if (record.co > 16) {
+    staminaBonus = record.co - 16
+    if (staminaBonus > caste.maxStaminaBonus) {
+      staminaBonus = caste.maxStaminaBonus
+    }
+  }
+  const staminaGain = staminaRoll + staminaBonus
+  record.stamina += staminaGain
+  record.staminamax += staminaGain
+
+  const magresGain = realmzRand(100, rng) <= record.wi + record.in + record.co ? 1 : 0
+  record.magres += magresGain
+
+  updateSpecsForLevelUp(record, caste, rng)
+
+  return {
+    level: record.level,
+    staminaGain,
+    spellpointsGain,
+    magresGain,
+    tohitGain,
+    missileGain,
+    victoryPointsSpent,
   }
 }
 
@@ -130,6 +242,54 @@ export function removeItem(record: CharacterRecord, index: number): boolean {
 
 export function pairedCombatIconForPortrait(portraitId: number): number {
   return portraitId + 8743
+}
+
+function spellpointsForLevelUp(record: CharacterRecord, caste: CasteProfile, rng: () => number): number {
+  switch (record.spellcastertype) {
+    case 1:
+      if ((caste.spellcasters[0]?.[1] ?? 0) <= record.level && record.level > 1) {
+        return record.level + realmzRand(record.in + Math.trunc(record.wi / 2), rng)
+      }
+      break
+    case 2:
+      if ((caste.spellcasters[1]?.[1] ?? 0) <= record.level && record.level > 1) {
+        return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
+      }
+      break
+    case 3:
+      if ((caste.spellcasters[2]?.[1] ?? 0) <= record.level && record.level > 1) {
+        return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
+      }
+      break
+  }
+  return 0
+}
+
+function updateSpecsForLevelUp(record: CharacterRecord, caste: CasteProfile, rng: () => number): void {
+  for (let index = 0; index < record.spec.length; index++) {
+    const gainRange = caste.specialAbilityLevelGains[index] ?? 0
+    if (gainRange !== 0) {
+      record.spec[index] += realmzRand(gainRange, rng)
+    }
+  }
+
+  for (let index = 0; index < 12; index++) {
+    record.spec[index] = pin(record.spec[index], 0, 100)
+  }
+  record.dodge = pin(record.dodge, 0, 100)
+  record.missile = pin(record.missile, 0, 100)
+  record.magres = pin(record.magres, 0, 100)
+  record.twohand = pin(record.twohand, 0, 100)
+  record.damage = pin(record.damage, 0, 200)
+  record.handtohand = pin(record.handtohand, 0, 200)
+}
+
+function realmzRand(range: number, rng: () => number): number {
+  return 1 + Math.trunc(rng() * range)
+}
+
+function pin(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
 }
 
 function blankItem(): ItemEntry {

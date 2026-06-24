@@ -382,6 +382,63 @@ function parseSpells(strings) {
   return spells
 }
 
+function i16Array(data, offset, count) {
+  return Array.from({ length: count }, (_, index) => i16(data, offset + index * 2))
+}
+
+function i32Array(data, offset, count) {
+  return Array.from({ length: count }, (_, index) => i32(data, offset + index * 4))
+}
+
+function i8Array(data, offset, count) {
+  return Array.from({ length: count }, (_, index) => data.readInt8(offset + index))
+}
+
+function parseRaceProfiles(strings) {
+  const data = readFileAny(
+    path.join(dataRoot, 'Data Files', 'Data Race'),
+    path.join(sourceDataRoot, 'Data Files', 'Data Race'),
+  )
+  const recordSize = 408
+  return Array.from({ length: 30 }, (_, index) => {
+    const id = index + 1
+    const offset = index * recordSize
+    return {
+      id,
+      name: str(strings, 129, id, `Race ${id}`),
+      numOfAttacks: i16Array(data, offset + 204, 2),
+    }
+  })
+}
+
+function parseCasteProfiles(strings) {
+  const data = readFileAny(
+    path.join(dataRoot, 'Data Files', 'Data Caste'),
+    path.join(sourceDataRoot, 'Data Files', 'Data Caste'),
+  )
+  const recordSize = 576
+  return Array.from({ length: 30 }, (_, index) => {
+    const id = index + 1
+    const offset = index * recordSize
+    return {
+      id,
+      name: str(strings, 131, id, `Caste ${id}`),
+      specialAbilityLevelGains: i16Array(data, offset + 28, 15),
+      spellcasters: Array.from({ length: 4 }, (_, row) => i16Array(data, offset + 84 + row * 6, 3)),
+      conditions: i16Array(data, offset + 132, 40),
+      stamina: i16Array(data, offset + 216, 2),
+      dodge: i16Array(data, offset + 224, 2),
+      tohit: i16Array(data, offset + 228, 2),
+      missile: i16Array(data, offset + 232, 2),
+      hand2hand: i16Array(data, offset + 236, 2),
+      maxStaminaBonus: i16(data, offset + 254),
+      bonusAttacks: i16(data, offset + 258),
+      victory: i32Array(data, offset + 264, 30),
+      attacks: i8Array(data, offset + 426, 10),
+    }
+  })
+}
+
 function ensureNativeExtractor() {
   if (fs.existsSync(nativeExtractor)) {
     return
@@ -503,8 +560,8 @@ const metadata = {
   generatedAt: new Date().toISOString(),
   sourceRoot: realmzRoot,
   items: parseItems(strings),
-  races: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: str(strings, 129, i + 1, `Race ${i + 1}`) })),
-  castes: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: str(strings, 131, i + 1, `Caste ${i + 1}`) })),
+  raceProfiles: parseRaceProfiles(strings),
+  casteProfiles: parseCasteProfiles(strings),
   genders: [
     { id: 1, name: 'Male' },
     { id: 2, name: 'Female' },
@@ -518,6 +575,9 @@ const metadata = {
   portraits: Array.from({ length: 120 }, (_, i) => ({ id: 257 + i, name: `Portrait ${257 + i}` })),
   combatIcons: Array.from({ length: 120 }, (_, i) => ({ id: 9000 + i, name: `Combat Icon ${9000 + i}` })),
 }
+
+metadata.races = metadata.raceProfiles.map(({ id, name }) => ({ id, name }))
+metadata.castes = metadata.casteProfiles.map(({ id, name }) => ({ id, name }))
 
 fs.mkdirSync(path.dirname(outJson), { recursive: true })
 fs.writeFileSync(outJson, `${JSON.stringify(metadata, null, 2)}\n`)

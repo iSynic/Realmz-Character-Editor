@@ -10,11 +10,15 @@ import {
 import {
   addItem,
   applyCharacterMutation,
+  clearBadEffects,
+  isBadConditionValue,
+  levelUpCharacter,
   pairedCombatIconForPortrait,
   removeItem,
   setSpellcasterType,
   setSpellpointsCurrent,
   setSpellpointsMax,
+  type LevelUpResult,
 } from './domain/editorLogic'
 import { itemById, itemName, itemsForCategory, labelFor, metadata, spellFor } from './domain/metadata'
 import type { CharacterFile, CharacterRecord, ItemCategoryId, ItemMetadata, ValidationIssue } from './domain/types'
@@ -81,6 +85,49 @@ const itemCategoryLabels: { id: ItemCategoryId; label: string }[] = [
   { id: 'misc', label: 'Misc' },
 ]
 
+const conditionDisplayLabels = [
+  'In Retreat',
+  'Is Helpless',
+  'Entangled',
+  'Cursed',
+  'Magic Aura',
+  'Stupid',
+  'Moving Slowly',
+  'Shielded from normal attacks',
+  'Shielded from projectiles',
+  'Poisoned',
+  'Regenerating',
+  'Protection from heat attacks',
+  'Protection from cold attacks',
+  'Protection from electrical attacks',
+  'Protection from chemical attacks',
+  'Protection from mental attacks',
+  'Protection from 1st level spells',
+  'Protection from 2nd level spells',
+  'Protection from 3rd level spells',
+  'Protection from 4th level spells',
+  'Protection from 5th level spells',
+  'Strong',
+  'Protection from foe',
+  'Speedy',
+  'Invisible',
+  'Animated',
+  'Turned to stone',
+  'Blind',
+  'Is Diseased',
+  'Confused',
+  'Reflecting Spells',
+  'Reflecting Attacks',
+  'Attack bonus',
+  'Absorb Energy',
+  'Losing Energy',
+  'Absorbs spell energy from attacks',
+  'Hindered Attacks',
+  'Hindered Defense',
+  'Defensive bonus',
+  'Silenced',
+]
+
 function realmzAsset(path: string): string {
   return `${import.meta.env.BASE_URL}realmz-assets/${path}`
 }
@@ -109,6 +156,37 @@ function App() {
       ...characterFile,
       record: applyCharacterMutation(characterFile.record, mutate),
     })
+  }
+
+  const levelUp = () => {
+    const resultRef: { current: LevelUpResult | null } = { current: null }
+    updateRecord((draft) => {
+      resultRef.current = levelUpCharacter(draft)
+    })
+    const result = resultRef.current
+    if (!result) {
+      setMessage('Cannot level up without a valid race, caste, and level.')
+      return
+    }
+    const details = [`+${result.staminaGain} stamina`]
+    if (result.spellpointsGain) {
+      details.push(`+${result.spellpointsGain} spell pts`)
+    }
+    if (result.magresGain) {
+      details.push(`+${result.magresGain} magic resistance`)
+    }
+    if (result.victoryPointsSpent) {
+      details.push(`${result.victoryPointsSpent} victory pts spent`)
+    }
+    setMessage(`Leveled ${record?.name ?? 'character'} to level ${result.level}: ${details.join(', ')}.`)
+  }
+
+  const clearBadConditionEffects = () => {
+    let cleared = 0
+    updateRecord((draft) => {
+      cleared = clearBadEffects(draft)
+    })
+    setMessage(cleared ? `Cleared ${cleared} bad condition effect${cleared === 1 ? '' : 's'}.` : 'No bad condition effects to clear.')
   }
 
   const handleUpload = async (file: File | undefined) => {
@@ -155,6 +233,7 @@ function App() {
         </div>
         <div className="top-actions">
           <input
+            className="file-input"
             ref={fileInputRef}
             type="file"
             aria-label="Upload character file"
@@ -188,11 +267,11 @@ function App() {
                 </button>
               ))}
             </nav>
-            {activeTab === 'core' && <CoreTab record={record} updateRecord={updateRecord} />}
+            {activeTab === 'core' && <CoreTab record={record} updateRecord={updateRecord} levelUp={levelUp} />}
             {activeTab === 'spells' && (
               <SpellsTab record={record} spellLevel={spellLevel} setSpellLevel={setSpellLevel} updateRecord={updateRecord} />
             )}
-            {activeTab === 'conditions' && <ConditionsTab record={record} updateRecord={updateRecord} />}
+            {activeTab === 'conditions' && <ConditionsTab record={record} updateRecord={updateRecord} clearBadConditionEffects={clearBadConditionEffects} />}
             {activeTab === 'abilities' && <AbilitiesTab record={record} updateRecord={updateRecord} />}
             {activeTab === 'items' && (
               <ItemsTab
@@ -213,18 +292,7 @@ function App() {
             )}
           </section>
         </div>
-      ) : (
-        <section className="drop-panel">
-          <input
-            type="file"
-            aria-label="Upload Realmz character"
-            onChange={(event) => void handleUpload(event.target.files?.[0])}
-          />
-          <h2>Open a Realmz character file</h2>
-          <p>Choose one of the 872-byte character files from a Realmz Character Files folder.</p>
-          <button type="button" onClick={() => fileInputRef.current?.click()}>Select Character File</button>
-        </section>
-      )}
+      ) : null}
     </main>
   )
 }
@@ -261,7 +329,7 @@ function CharacterSummary({ record, issues }: { record: CharacterRecord; issues:
   )
 }
 
-function CoreTab({ record, updateRecord }: { record: CharacterRecord; updateRecord: UpdateRecord }) {
+function CoreTab({ record, updateRecord, levelUp }: { record: CharacterRecord; updateRecord: UpdateRecord; levelUp: () => void }) {
   return (
     <div className="tab-grid">
       <Panel title="Identity">
@@ -273,7 +341,13 @@ function CoreTab({ record, updateRecord }: { record: CharacterRecord; updateReco
         <SelectField label="Caste" value={record.caste} options={metadata.castes} onChange={(value) => updateRecord((draft) => { draft.caste = value })} />
         <SelectField label="Gender" value={record.gender} options={metadata.genders} onChange={(value) => updateRecord((draft) => { draft.gender = value })} />
         <NumberField label="Age (years)" value={Math.trunc(record.age / 365)} min={0} max={10000} onChange={(value) => updateRecord((draft) => { draft.age = value * 365 })} />
-        <NumberField label="Level" value={record.level} min={0} max={1000} onChange={(value) => updateRecord((draft) => { draft.level = value })} />
+        <div className="field action-field">
+          <span>Level</span>
+          <div className="level-up-control">
+            <strong>{record.level}</strong>
+            <button type="button" disabled={record.level >= 1000} onClick={levelUp}>Level Up</button>
+          </div>
+        </div>
       </Panel>
 
       <Panel title="Base Stats">
@@ -374,21 +448,43 @@ function SpellsTab({ record, spellLevel, setSpellLevel, updateRecord }: { record
   )
 }
 
-function ConditionsTab({ record, updateRecord }: { record: CharacterRecord; updateRecord: UpdateRecord }) {
+function ConditionsTab({ record, updateRecord, clearBadConditionEffects }: { record: CharacterRecord; updateRecord: UpdateRecord; clearBadConditionEffects: () => void }) {
+  const hasBadEffects = record.condition.some((value, index) => isBadConditionValue(index, value))
   return (
-    <div className="matrix-panel">
-      {record.condition.map((value, index) => (
-        <NumberField
-          key={index}
-          label={metadata.conditions[index]}
-          value={value}
-          min={-32768}
-          max={32767}
-          onChange={(next) => updateRecord((draft) => { draft.condition[index] = next })}
-        />
-      ))}
-    </div>
+    <>
+      <div className="condition-toolbar">
+        <p><strong>Negative values are permanent.</strong> Non-zero conditions are highlighted.</p>
+        <button type="button" disabled={!hasBadEffects} onClick={clearBadConditionEffects}>Clear Bad Effects</button>
+      </div>
+      <div className="condition-grid">
+        {record.condition.map((value, index) => (
+          <label className={conditionFieldClass(index, value)} key={index}>
+            <span>{conditionDisplayLabels[index] ?? metadata.conditions[index]}</span>
+            <input
+              type="number"
+              value={Number.isFinite(value) ? value : 0}
+              min={-32768}
+              max={32767}
+              onChange={(event) => updateRecord((draft) => { draft.condition[index] = clampSigned(Number(event.target.value), -32768, 32767) })}
+            />
+          </label>
+        ))}
+      </div>
+    </>
   )
+}
+
+function conditionFieldClass(index: number, value: number): string {
+  const classes = ['condition-field']
+  if (value > 0) {
+    classes.push('active')
+  } else if (value < 0) {
+    classes.push('permanent')
+  }
+  if (isBadConditionValue(index, value)) {
+    classes.push('bad')
+  }
+  return classes.join(' ')
 }
 
 function AbilitiesTab({ record, updateRecord }: { record: CharacterRecord; updateRecord: UpdateRecord }) {

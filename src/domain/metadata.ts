@@ -1,5 +1,5 @@
 import rawMetadata from '../generated/realmzMetadata.json'
-import type { ItemCategoryId, ItemMetadata, RealmzMetadata, SpellMetadata } from './types'
+import type { CasteProfile, ItemCategoryId, ItemMetadata, RaceProfile, RealmzMetadata, SpellMetadata } from './types'
 
 export const metadata = rawMetadata as RealmzMetadata
 
@@ -7,8 +7,24 @@ export const itemsById = new Map<number, ItemMetadata>(
   metadata.items.map((item) => [item.id, item]),
 )
 
+export const raceProfilesById = new Map<number, RaceProfile>(
+  metadata.raceProfiles.map((race) => [race.id, race]),
+)
+
+export const casteProfilesById = new Map<number, CasteProfile>(
+  metadata.casteProfiles.map((caste) => [caste.id, caste]),
+)
+
 export function itemById(id: number): ItemMetadata | undefined {
   return itemsById.get(Math.abs(id))
+}
+
+export function raceProfileById(id: number): RaceProfile | undefined {
+  return raceProfilesById.get(id)
+}
+
+export function casteProfileById(id: number): CasteProfile | undefined {
+  return casteProfilesById.get(id)
 }
 
 export function itemName(id: number, identified = true): string {

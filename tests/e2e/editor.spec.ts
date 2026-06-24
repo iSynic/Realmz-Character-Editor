@@ -11,7 +11,8 @@ test('uploads, edits, and downloads a Realmz character', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Upload character file').setInputFiles(traskPath)
   await expect(page.getByText(/Opened Traskelion/)).toBeVisible()
-  await page.getByLabel('Level').fill('13')
+  await page.getByRole('button', { name: 'Level Up' }).click()
+  await expect(page.getByText(/Leveled Traskelion to level/)).toBeVisible()
   await page.getByRole('button', { name: 'Items' }).click()
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll<HTMLImageElement>('img[src*="realmz-assets"]')).every(

@@ -165,10 +165,35 @@ export interface SpellMetadata {
   special: number
 }
 
+export interface RaceProfile {
+  id: number
+  name: string
+  numOfAttacks: number[]
+}
+
+export interface CasteProfile {
+  id: number
+  name: string
+  specialAbilityLevelGains: number[]
+  spellcasters: number[][]
+  conditions: number[]
+  stamina: number[]
+  dodge: number[]
+  tohit: number[]
+  missile: number[]
+  hand2hand: number[]
+  maxStaminaBonus: number
+  bonusAttacks: number
+  victory: number[]
+  attacks: number[]
+}
+
 export interface RealmzMetadata {
   generatedAt: string
   sourceRoot: string
   items: ItemMetadata[]
+  raceProfiles: RaceProfile[]
+  casteProfiles: CasteProfile[]
   races: NamedId[]
   castes: NamedId[]
   genders: NamedId[]

@@ -12,8 +12,8 @@ import {
   validateCharacter,
   validateCharacterName,
 } from './characterFile'
-import { applyCharacterMutation } from './editorLogic'
-import { removeItem } from './editorLogic'
+import { casteProfileById, raceProfileById } from './metadata'
+import { applyCharacterMutation, clearBadEffects, levelUpCharacter, removeItem, type LevelUpResult } from './editorLogic'
 import { CHARACTER_FILE_SIZE } from './types'
 
 const realmzRoot = process.env.REALMZ_ROOT ?? 'F:\\Realmz'
@@ -98,6 +98,112 @@ describe('Realmz character binary format', () => {
     parsed.record.spellpoints = 6
     refreshVerification(parsed.record)
     expect(validateCharacter(parsed.record).map((issue) => issue.message)).toContain('current spell points cannot exceed spell point max')
+  })
+
+  fixtureIt('applies native-style level-up math from race and caste data', () => {
+    const parsed = parseCharacterFile(new Uint8Array(loadCharacter('Traskelion')), 'Traskelion')
+    const before = structuredClone(parsed.record)
+    const race = raceProfileById(before.race)
+    const caste = casteProfileById(before.caste)
+    expect(race).toBeDefined()
+    expect(caste).toBeDefined()
+
+    let result: LevelUpResult | null = null
+    const edited = applyCharacterMutation(parsed.record, (draft) => {
+      result = levelUpCharacter(draft, () => 0)
+    })
+    const levelUp = result as LevelUpResult
+
+    const nextLevel = before.level + 1
+    const victoryIndex = Math.min(Math.max(before.level, 1), 30) - 1
+    const expectedVictorySpend = caste!.victory[victoryIndex] ?? 0
+    const expectedStaminaGain = 1 + Math.min(Math.max(before.co - 16, 0), caste!.maxStaminaBonus)
+    const expectedMissileGain = caste!.missile[1] ? 1 : 0
+    const expectedMagresGain = before.wi + before.in + before.co >= 1 ? 1 : 0
+
+    let expectedSpellcasterType = before.spellcastertype
+    if (caste!.spellcasters[0]?.[1]) {
+      expectedSpellcasterType = 1
+    } else if (caste!.spellcasters[1]?.[1]) {
+      expectedSpellcasterType = 2
+    } else if (caste!.spellcasters[2]?.[1]) {
+      expectedSpellcasterType = 3
+    }
+
+    let expectedSpellpointsGain = 0
+    if (nextLevel > 1) {
+      if (expectedSpellcasterType === 1 && (caste!.spellcasters[0]?.[1] ?? 0) <= nextLevel) {
+        expectedSpellpointsGain = nextLevel + 1
+      } else if (expectedSpellcasterType === 2 && (caste!.spellcasters[1]?.[1] ?? 0) <= nextLevel) {
+        expectedSpellpointsGain = nextLevel + 1
+      } else if (expectedSpellcasterType === 3 && (caste!.spellcasters[2]?.[1] ?? 0) <= nextLevel) {
+        expectedSpellpointsGain = nextLevel + 1
+      }
+    }
+
+    let expectedNormAttacks = (race!.numOfAttacks[0] ?? 0) + caste!.bonusAttacks
+    for (const attackLevel of caste!.attacks) {
+      if (attackLevel !== 0 && attackLevel <= nextLevel) {
+        expectedNormAttacks++
+      }
+    }
+    expectedNormAttacks = Math.min(expectedNormAttacks, 2 * (race!.numOfAttacks[1] ?? 0), 12)
+
+    expect(levelUp).not.toBeNull()
+    expect(edited.level).toBe(nextLevel)
+    expect(edited.exp).toBe(before.exp - expectedVictorySpend)
+    expect(edited.normattacks).toBe(expectedNormAttacks)
+    expect(edited.tohit).toBe(before.tohit + (caste!.tohit[1] ?? 0))
+    expect(edited.dodge).toBeGreaterThanOrEqual(0)
+    expect(edited.dodge).toBeLessThanOrEqual(100)
+    expect(edited.missile).toBe(Math.min(100, before.missile + expectedMissileGain))
+    expect(edited.handtohand).toBeLessThanOrEqual(200)
+    expect(edited.magres).toBe(Math.min(100, before.magres + expectedMagresGain))
+    expect(edited.stamina).toBe(before.stamina + expectedStaminaGain)
+    expect(edited.staminamax).toBe(before.staminamax + expectedStaminaGain)
+    expect(edited.spellcastertype).toBe(expectedSpellcasterType)
+    expect(edited.spellpoints).toBe(before.spellpoints + expectedSpellpointsGain)
+    expect(edited.spellpointsmax).toBe(before.spellpointsmax + expectedSpellpointsGain)
+    expect(levelUp).toMatchObject({
+      level: nextLevel,
+      staminaGain: expectedStaminaGain,
+      spellpointsGain: expectedSpellpointsGain,
+      magresGain: expectedMagresGain,
+      missileGain: expectedMissileGain,
+      victoryPointsSpent: expectedVictorySpend,
+    })
+    expect(edited.verify1).toBe(expectedVerify1(edited))
+    expect(edited.verify2).toBe(expectedVerify2(edited))
+    expect(edited.verify3).toBe(expectedVerify3(edited))
+    expect(validateCharacter(edited)).toEqual([])
+
+    const reparsed = parseCharacterFile(serializeCharacterFile({ ...parsed, record: edited }), 'Traskelion')
+    expect(reparsed.record.level).toBe(nextLevel)
+    expect(validateCharacter(reparsed.record)).toEqual([])
+  })
+
+  fixtureIt('clears bad condition effects without removing beneficial conditions', () => {
+    const parsed = parseCharacterFile(new Uint8Array(loadCharacter('Traskelion')), 'Traskelion')
+    let cleared = 0
+    const edited = applyCharacterMutation(parsed.record, (draft) => {
+      draft.condition = Array.from({ length: draft.condition.length }, () => 0)
+      draft.condition[3] = -1
+      draft.condition[6] = 4
+      draft.condition[10] = 8
+      draft.condition[21] = -1
+      draft.condition[32] = -3
+      draft.condition[38] = 5
+      cleared = clearBadEffects(draft)
+    })
+
+    expect(cleared).toBe(3)
+    expect(edited.condition[3]).toBe(0)
+    expect(edited.condition[6]).toBe(0)
+    expect(edited.condition[32]).toBe(0)
+    expect(edited.condition[10]).toBe(8)
+    expect(edited.condition[21]).toBe(-1)
+    expect(edited.condition[38]).toBe(5)
+    expect(validateCharacter(edited)).toEqual([])
   })
 
   fixtureIt('clears stale equipped weapon state when removing an equipped item', () => {
