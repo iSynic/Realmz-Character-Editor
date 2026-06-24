@@ -33,16 +33,6 @@ npm run dev
 
 Some tests use real character fixtures from a local Realmz checkout. By default the project looks for `F:\Realmz`; set `REALMZ_ROOT` to point somewhere else. Fixture-dependent tests skip cleanly when those files are not available.
 
-## Metadata And Assets
-
-Realmz-derived metadata and browser assets are generated with:
-
-```powershell
-npm run generate:metadata
-```
-
-The extractor defaults to `F:\Realmz` and can be redirected with `REALMZ_ROOT`. Generated output is checked in under `src/generated` and `public/realmz-assets` so the deployed app remains a plain static site and does not need a Realmz checkout at runtime.
-
 ## GitHub Pages
 
 This repository deploys through GitHub Actions Pages. Repository Settings -> Pages should use `GitHub Actions` as the source.
