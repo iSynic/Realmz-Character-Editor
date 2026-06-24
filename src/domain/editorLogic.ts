@@ -12,8 +12,47 @@ export interface LevelUpResult {
   victoryPointsSpent: number
 }
 
+export interface SpellProgression {
+  casterType: number
+  startLevel: number
+  maxSpellLevel: number
+}
+
 const harmfulConditionIndexes = new Set([0, 1, 2, 3, 5, 6, 9, 25, 26, 27, 28, 29, 34, 36, 37, 39])
 const signedBonusConditionIndexes = new Set([32, 38])
+const SPELLCASTER_ROWS = 3
+
+export function spellProgressionsForCaste(caste: CasteProfile | undefined): SpellProgression[] {
+  if (!caste) {
+    return []
+  }
+  return Array.from({ length: SPELLCASTER_ROWS }, (_, index) => {
+    const row = caste.spellcasters[index] ?? []
+    return {
+      casterType: index + 1,
+      startLevel: row[1] ?? 0,
+      maxSpellLevel: row[2] ?? 0,
+    }
+  }).filter((progression) => progression.startLevel > 0 && progression.maxSpellLevel > 0)
+}
+
+export function spellProgressionForCaste(caste: CasteProfile | undefined, preferredCasterType = 0): SpellProgression | null {
+  const progressions = spellProgressionsForCaste(caste)
+  return progressions.find((progression) => progression.casterType === preferredCasterType) ?? progressions[0] ?? null
+}
+
+export function activeSpellProgressionForCaste(caste: CasteProfile | undefined, level: number, preferredCasterType = 0): SpellProgression | null {
+  const progression = spellProgressionForCaste(caste, preferredCasterType)
+  return progression && level >= progression.startLevel ? progression : null
+}
+
+export function spellProgressionForRecord(record: CharacterRecord): SpellProgression | null {
+  return spellProgressionForCaste(casteProfileById(record.caste), record.spellcastertype)
+}
+
+export function activeSpellProgression(record: CharacterRecord): SpellProgression | null {
+  return activeSpellProgressionForCaste(casteProfileById(record.caste), record.level, record.spellcastertype)
+}
 
 export function applyCharacterMutation(record: CharacterRecord, mutate: (draft: CharacterRecord) => void): CharacterRecord {
   const draft = structuredClone(record)
@@ -112,15 +151,11 @@ export function levelUpCharacter(record: CharacterRecord, rng: () => number = Ma
   const missileGain = caste.missile[1] ? realmzRand(caste.missile[1], rng) : 0
   record.missile += missileGain
 
-  if (caste.spellcasters[0]?.[1]) {
-    record.spellcastertype = 1
-  } else if (caste.spellcasters[1]?.[1]) {
-    record.spellcastertype = 2
-  } else if (caste.spellcasters[2]?.[1]) {
-    record.spellcastertype = 3
+  const activeProgression = activeSpellProgressionForCaste(caste, record.level, record.spellcastertype)
+  if (activeProgression) {
+    record.spellcastertype = activeProgression.casterType
   }
-
-  const spellpointsGain = spellpointsForLevelUp(record, caste, rng)
+  const spellpointsGain = activeProgression ? spellpointsForLevelUp(record, activeProgression, rng) : 0
   record.spellpoints += spellpointsGain
   record.spellpointsmax += spellpointsGain
 
@@ -153,20 +188,21 @@ export function levelUpCharacter(record: CharacterRecord, rng: () => number = Ma
 }
 
 export function normalizeSpells(record: CharacterRecord): void {
+  const activeProgression = activeSpellProgression(record)
   for (let level = 0; level < SPELL_LEVELS; level++) {
     record.nspells[level] = 0
     for (let spell = 0; spell < SPELLS_PER_LEVEL; spell++) {
-      record.cspells[level][spell] = record.cspells[level][spell] ? 1 : 0
+      record.cspells[level][spell] = activeProgression && level < activeProgression.maxSpellLevel && record.cspells[level][spell] ? 1 : 0
     }
   }
   record.canheal = 0
   record.canidentify = 0
   record.candetect = 0
-  if (record.spellcastertype > 0 && record.spellcastertype <= 5) {
+  if (activeProgression) {
     for (let level = 0; level < SPELL_LEVELS; level++) {
       for (let spell = 0; spell < SPELLS_PER_LEVEL; spell++) {
         if (record.cspells[level][spell]) {
-          const info = spellFor(record.spellcastertype, level, spell)
+          const info = spellFor(activeProgression.casterType, level, spell)
           if (info?.special === 57) {
             record.canheal = 1
           }
@@ -244,23 +280,17 @@ export function pairedCombatIconForPortrait(portraitId: number): number {
   return portraitId + 8743
 }
 
-function spellpointsForLevelUp(record: CharacterRecord, caste: CasteProfile, rng: () => number): number {
-  switch (record.spellcastertype) {
+function spellpointsForLevelUp(record: CharacterRecord, progression: SpellProgression, rng: () => number): number {
+  if (record.level <= 1) {
+    return 0
+  }
+  switch (progression.casterType) {
     case 1:
-      if ((caste.spellcasters[0]?.[1] ?? 0) <= record.level && record.level > 1) {
-        return record.level + realmzRand(record.in + Math.trunc(record.wi / 2), rng)
-      }
-      break
+      return record.level + realmzRand(record.in + Math.trunc(record.wi / 2), rng)
     case 2:
-      if ((caste.spellcasters[1]?.[1] ?? 0) <= record.level && record.level > 1) {
-        return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
-      }
-      break
+      return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
     case 3:
-      if ((caste.spellcasters[2]?.[1] ?? 0) <= record.level && record.level > 1) {
-        return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
-      }
-      break
+      return record.level + realmzRand(record.wi + Math.trunc(record.in / 2), rng)
   }
   return 0
 }

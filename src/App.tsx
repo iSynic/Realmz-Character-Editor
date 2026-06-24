@@ -10,12 +10,13 @@ import {
 import {
   addItem,
   applyCharacterMutation,
+  activeSpellProgression,
   clearBadEffects,
   isBadConditionValue,
   levelUpCharacter,
   pairedCombatIconForPortrait,
   removeItem,
-  setSpellcasterType,
+  spellProgressionForRecord,
   setSpellpointsCurrent,
   setSpellpointsMax,
   type LevelUpResult,
@@ -410,34 +411,56 @@ function CoreTab({ record, updateRecord, levelUp }: { record: CharacterRecord; u
 }
 
 function SpellsTab({ record, spellLevel, setSpellLevel, updateRecord }: { record: CharacterRecord; spellLevel: number; setSpellLevel: (value: number) => void; updateRecord: UpdateRecord }) {
+  const progression = spellProgressionForRecord(record)
+  const activeProgression = activeSpellProgression(record)
+  const casteName = labelFor(metadata.castes, record.caste, `Caste ${record.caste}`)
+  const casterName = progression ? labelFor(metadata.spellcasters, progression.casterType, `Spellcaster ${progression.casterType}`) : 'None'
+  const activeSpellLevel = activeProgression ? Math.min(spellLevel, activeProgression.maxSpellLevel - 1) : 0
+
   return (
     <div className="vertical-panel">
       <Panel title="Spellcasting">
-        <SelectField label="Spellcaster" value={record.spellcastertype} options={metadata.spellcasters} onChange={(value) => updateRecord((draft) => { setSpellcasterType(draft, value) })} />
+        <ReadonlyField label="Spellcaster" value={progression ? casterName : 'None'} />
+        {!progression && (
+          <p className="empty-note">{casteName} does not gain spellcasting.</p>
+        )}
+        {progression && !activeProgression && (
+          <p className="empty-note">{casteName} gains {casterName} spells at level {progression.startLevel}.</p>
+        )}
+        {activeProgression && activeProgression.maxSpellLevel < 7 && (
+          <p className="empty-note">{casteName} can learn spell levels 1-{activeProgression.maxSpellLevel}.</p>
+        )}
         <div className="level-tabs">
           {Array.from({ length: 7 }, (_, level) => (
-            <button key={level} type="button" className={level === spellLevel ? 'active' : ''} onClick={() => setSpellLevel(level)}>
+            <button
+              key={level}
+              type="button"
+              className={activeProgression && level === activeSpellLevel ? 'active' : ''}
+              disabled={!activeProgression || level >= activeProgression.maxSpellLevel}
+              onClick={() => setSpellLevel(level)}
+            >
               {level + 1}
             </button>
           ))}
         </div>
-        {record.spellcastertype <= 0 ? (
-          <p className="empty-note">This character has no spellcaster type.</p>
+        {!activeProgression ? (
+          <p className="empty-note">Spell selection is not available at level {record.level}.</p>
         ) : (
           <div className="spell-grid">
             {Array.from({ length: 12 }, (_, index) => {
-              const spell = spellFor(record.spellcastertype, spellLevel, index)
-              const checked = !!record.cspells[spellLevel][index]
+              const spell = spellFor(activeProgression.casterType, activeSpellLevel, index)
+              const checked = !!record.cspells[activeSpellLevel][index]
               return (
                 <label key={index} className={`check-row ${checked ? 'selected' : ''}`}>
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => updateRecord((draft) => {
-                      draft.cspells[spellLevel][index] = draft.cspells[spellLevel][index] ? 0 : 1
+                      draft.spellcastertype = activeProgression.casterType
+                      draft.cspells[activeSpellLevel][index] = draft.cspells[activeSpellLevel][index] ? 0 : 1
                     })}
                   />
-                  <span>{spell?.name ?? `Spell ${spellLevel + 1}-${index + 1}`}</span>
+                  <span>{spell?.name ?? `Spell ${activeSpellLevel + 1}-${index + 1}`}</span>
                 </label>
               )
             })}
@@ -667,6 +690,15 @@ function NumberField({ label, value, min, max, onChange }: { label: string; valu
         onChange={(event) => onChange(clampSigned(Number(event.target.value), min, max))}
       />
     </label>
+  )
+}
+
+function ReadonlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="field readonly-field">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   )
 }
 

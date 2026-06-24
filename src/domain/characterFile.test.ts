@@ -13,8 +13,27 @@ import {
   validateCharacterName,
 } from './characterFile'
 import { casteProfileById, raceProfileById } from './metadata'
-import { applyCharacterMutation, clearBadEffects, levelUpCharacter, removeItem, type LevelUpResult } from './editorLogic'
-import { CHARACTER_FILE_SIZE } from './types'
+import {
+  activeSpellProgressionForCaste,
+  applyCharacterMutation,
+  clearBadEffects,
+  levelUpCharacter,
+  removeItem,
+  spellProgressionForCaste,
+  type LevelUpResult,
+} from './editorLogic'
+import {
+  CHARACTER_FILE_SIZE,
+  CONDITION_COUNT,
+  DEFINE_SPELL_ROWS,
+  MAX_ITEMS,
+  SAVE_COUNT,
+  SPECIAL_COUNT,
+  SPEC_COUNT,
+  SPELL_LEVELS,
+  SPELLS_PER_LEVEL,
+  type CharacterRecord,
+} from './types'
 
 const realmzRoot = process.env.REALMZ_ROOT ?? 'F:\\Realmz'
 const characterRoot = path.join(realmzRoot, 'out_win_clang', 'Character Files')
@@ -23,6 +42,103 @@ const fixtureIt = hasCharacterFixtures ? it : it.skip
 
 function loadCharacter(name: string) {
   return fs.readFileSync(path.join(characterRoot, name))
+}
+
+function testRecord(overrides: Partial<CharacterRecord> = {}): CharacterRecord {
+  return {
+    version: -3,
+    verify1: 0,
+    tohit: 0,
+    dodge: 0,
+    missile: 0,
+    twohand: 0,
+    traiter: 0,
+    normattacks: 0,
+    beenattacked: 0,
+    guarding: 0,
+    target: 0,
+    numitems: 0,
+    weaponsound: 0,
+    underneath: 0,
+    face: 0,
+    attackbonus: 0,
+    magco: 0,
+    position: 0,
+    maglu: 0,
+    magst: 0,
+    magres: 0,
+    movebonus: 0,
+    ac: 0,
+    damage: 0,
+    race: 1,
+    caste: 1,
+    spellcastertype: 0,
+    gender: 0,
+    level: 1,
+    movement: 0,
+    movementmax: 0,
+    attacks: 0,
+    nspells: Array.from({ length: SPELL_LEVELS }, () => 0),
+    stamina: 10,
+    staminamax: 10,
+    pictid: 0,
+    iconid: 0,
+    spellpoints: 0,
+    spellpointsmax: 0,
+    nohands: 0,
+    weaponnum: 0,
+    missilenum: 0,
+    handtohand: 0,
+    condition: Array.from({ length: CONDITION_COUNT }, () => 0),
+    special: Array.from({ length: SPECIAL_COUNT }, () => 0),
+    armor: Array.from({ length: 20 }, () => 0),
+    spec: Array.from({ length: SPEC_COUNT }, () => 0),
+    save: Array.from({ length: SAVE_COUNT }, () => 0),
+    currentagegroup: 0,
+    verify2: 0,
+    items: Array.from({ length: MAX_ITEMS }, () => ({ id: 0, equip: 0, ident: 0, charge: 0 })),
+    scrollcase: Array.from({ length: 5 }, () => ({ castcaste: 0, castlevel: 0, castnum: 0, powerlevel: 0 })),
+    age: 0,
+    exp: 0,
+    load: 0,
+    loadmax: 0,
+    money: [0, 0, 0],
+    hasturned: 0,
+    canheal: 0,
+    canidentify: 0,
+    candetect: 0,
+    toggle: 0,
+    bleeding: 0,
+    inbattle: 0,
+    st: 16,
+    in: 16,
+    wi: 16,
+    de: 16,
+    co: 16,
+    lu: 16,
+    cspells: Array.from({ length: SPELL_LEVELS }, () => Array.from({ length: SPELLS_PER_LEVEL }, () => 0)),
+    name: 'Test',
+    nameBytes: Array.from({ length: 30 }, () => 0),
+    verify3: 0,
+    damagetaken: 0,
+    damagegiven: 0,
+    hitsgiven: 0,
+    hitstaken: 0,
+    imissed: 0,
+    umissed: 0,
+    kills: 0,
+    deaths: 0,
+    knockouts: 0,
+    spellscast: 0,
+    destroyed: 0,
+    turns: 0,
+    prestigepenelty: 0,
+    definespells: Array.from({ length: DEFINE_SPELL_ROWS }, () => [0, 0, 0, 0]),
+    maxspellsattacks: 0,
+    spellsofar: 0,
+    spare: Array.from({ length: 96 }, () => 0),
+    ...overrides,
+  }
 }
 
 describe('Realmz character binary format', () => {
@@ -100,6 +216,41 @@ describe('Realmz character binary format', () => {
     expect(validateCharacter(parsed.record).map((issue) => issue.message)).toContain('current spell points cannot exceed spell point max')
   })
 
+  it('gates caste spell progression by current level', () => {
+    const rogue = casteProfileById(5)
+    const fencer = casteProfileById(14)
+
+    expect(spellProgressionForCaste(rogue)).toMatchObject({
+      casterType: 1,
+      startLevel: 15,
+      maxSpellLevel: 3,
+    })
+    expect(activeSpellProgressionForCaste(rogue, 14)).toBeNull()
+    expect(activeSpellProgressionForCaste(rogue, 15)).toMatchObject({
+      casterType: 1,
+      startLevel: 15,
+      maxSpellLevel: 3,
+    })
+    expect(spellProgressionForCaste(fencer)).toBeNull()
+  })
+
+  it('does not assign a future spellcaster type during level up', () => {
+    const record = testRecord({ caste: 5, level: 13, spellcastertype: 0 })
+
+    const waiting = levelUpCharacter(record, () => 0)
+    expect(waiting?.level).toBe(14)
+    expect(record.spellcastertype).toBe(0)
+    expect(record.spellpoints).toBe(0)
+    expect(record.spellpointsmax).toBe(0)
+
+    const unlocked = levelUpCharacter(record, () => 0)
+    expect(unlocked?.level).toBe(15)
+    expect(record.spellcastertype).toBe(1)
+    expect(unlocked?.spellpointsGain).toBe(16)
+    expect(record.spellpoints).toBe(16)
+    expect(record.spellpointsmax).toBe(16)
+  })
+
   fixtureIt('applies native-style level-up math from race and caste data', () => {
     const parsed = parseCharacterFile(new Uint8Array(loadCharacter('Traskelion')), 'Traskelion')
     const before = structuredClone(parsed.record)
@@ -121,24 +272,12 @@ describe('Realmz character binary format', () => {
     const expectedMissileGain = caste!.missile[1] ? 1 : 0
     const expectedMagresGain = before.wi + before.in + before.co >= 1 ? 1 : 0
 
-    let expectedSpellcasterType = before.spellcastertype
-    if (caste!.spellcasters[0]?.[1]) {
-      expectedSpellcasterType = 1
-    } else if (caste!.spellcasters[1]?.[1]) {
-      expectedSpellcasterType = 2
-    } else if (caste!.spellcasters[2]?.[1]) {
-      expectedSpellcasterType = 3
-    }
+    const expectedProgression = activeSpellProgressionForCaste(caste, nextLevel, before.spellcastertype)
+    const expectedSpellcasterType = expectedProgression?.casterType ?? before.spellcastertype
 
     let expectedSpellpointsGain = 0
-    if (nextLevel > 1) {
-      if (expectedSpellcasterType === 1 && (caste!.spellcasters[0]?.[1] ?? 0) <= nextLevel) {
-        expectedSpellpointsGain = nextLevel + 1
-      } else if (expectedSpellcasterType === 2 && (caste!.spellcasters[1]?.[1] ?? 0) <= nextLevel) {
-        expectedSpellpointsGain = nextLevel + 1
-      } else if (expectedSpellcasterType === 3 && (caste!.spellcasters[2]?.[1] ?? 0) <= nextLevel) {
-        expectedSpellpointsGain = nextLevel + 1
-      }
+    if (expectedProgression && nextLevel > 1) {
+      expectedSpellpointsGain = nextLevel + 1
     }
 
     let expectedNormAttacks = (race!.numOfAttacks[0] ?? 0) + caste!.bonusAttacks

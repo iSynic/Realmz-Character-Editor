@@ -185,6 +185,18 @@ select {
   box-sizing: border-box;
 }
 
+.readonly-field strong {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #58543e;
+  border-radius: 5px;
+  background: #0f1212;
+  color: #f7edda;
+  padding: 7px 8px;
+  font-weight: 400;
+}
+
 .action-field {
   align-items: start;
 }
