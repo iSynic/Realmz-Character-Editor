@@ -133,6 +133,40 @@ select {
   border-color: #77a79a;
 }
 
+.catalog-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.catalog-controls .segmented {
+  margin-bottom: 0;
+}
+
+.usable-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: #f5d17a;
+  cursor: pointer;
+}
+
+.usable-toggle strong {
+  font-weight: 700;
+}
+
+.usable-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #2e5a58;
+  cursor: pointer;
+}
+
 .tab-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -426,6 +460,10 @@ select {
   overflow: auto;
 }
 
+.inventory-dropzone {
+  min-height: 120px;
+}
+
 .catalog {
   max-height: 455px;
 }
@@ -436,8 +474,23 @@ select {
   align-items: center;
   gap: 8px;
   width: 100%;
+  border: 1px solid #6c664e;
+  border-radius: 6px;
+  background: #31382f;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  font: inherit;
   text-align: left;
   color: #f4e7c5;
+  cursor: grab;
+}
+
+.item-row:active {
+  cursor: grabbing;
+}
+
+.item-row > * {
+  pointer-events: none;
 }
 
 .item-row span {

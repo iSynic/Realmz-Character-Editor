@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import './App.css'
 import {
   characterDownloadName,
@@ -14,6 +14,7 @@ import {
   clearBadEffects,
   isBadConditionValue,
   levelUpCharacter,
+  moveItem,
   pairedCombatIconForPortrait,
   removeItem,
   spellProgressionForRecord,
@@ -21,7 +22,7 @@ import {
   setSpellpointsMax,
   type LevelUpResult,
 } from './domain/editorLogic'
-import { itemById, itemName, itemsForCategory, labelFor, metadata, spellFor } from './domain/metadata'
+import { canCharacterUseItem, itemById, itemName, itemsForCategory, labelFor, metadata, spellFor } from './domain/metadata'
 import type { CharacterFile, CharacterRecord, ItemCategoryId, ItemMetadata, ValidationIssue } from './domain/types'
 
 type TabId = 'core' | 'spells' | 'conditions' | 'abilities' | 'items' | 'appearance'
@@ -86,6 +87,9 @@ const itemCategoryLabels: { id: ItemCategoryId; label: string }[] = [
   { id: 'misc', label: 'Misc' },
 ]
 
+const catalogDragType = 'application/x-realmz-catalog-item'
+const inventoryDragType = 'application/x-realmz-inventory-index'
+
 const conditionDisplayLabels = [
   'In Retreat',
   'Is Helpless',
@@ -142,6 +146,7 @@ function App() {
   const [selectedInventory, setSelectedInventory] = useState(0)
   const [selectedCatalogId, setSelectedCatalogId] = useState<number | null>(null)
   const [catalogFilter, setCatalogFilter] = useState('')
+  const [usableOnly, setUsableOnly] = useState(false)
   const [appearanceMode, setAppearanceMode] = useState<'portrait' | 'combat'>('portrait')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -285,6 +290,8 @@ function App() {
                 setSelectedCatalogId={setSelectedCatalogId}
                 filter={catalogFilter}
                 setFilter={setCatalogFilter}
+                usableOnly={usableOnly}
+                setUsableOnly={setUsableOnly}
                 updateRecord={updateRecord}
               />
             )}
@@ -538,6 +545,8 @@ function ItemsTab({
   setSelectedCatalogId,
   filter,
   setFilter,
+  usableOnly,
+  setUsableOnly,
   updateRecord,
 }: {
   record: CharacterRecord
@@ -549,29 +558,103 @@ function ItemsTab({
   setSelectedCatalogId: (id: number | null) => void
   filter: string
   setFilter: (value: string) => void
+  usableOnly: boolean
+  setUsableOnly: (value: boolean) => void
   updateRecord: UpdateRecord
 }) {
   const inventory = record.items.slice(0, record.numitems)
-  const catalog = itemsForCategory(category).filter((item) => `${item.id} ${item.name}`.toLowerCase().includes(filter.toLowerCase()))
+  const catalog = itemsForCategory(category)
+    .filter((item) => !usableOnly || canCharacterUseItem(item, record))
+    .filter((item) => `${item.id} ${item.name}`.toLowerCase().includes(filter.toLowerCase()))
   const selectedInventoryItem = inventory[selectedInventory]
-  const selectedCatalogItem = selectedCatalogId ? itemById(selectedCatalogId) : catalog[0]
+  const selectedCatalogItem = catalog.find((item) => item.id === selectedCatalogId) ?? catalog[0]
   const detail = selectedCatalogItem ?? (selectedInventoryItem ? itemById(selectedInventoryItem.id) : undefined)
+  const dragPayload = useRef<{ catalogItemId?: number; inventoryIndex?: number } | null>(null)
+
+  const activateItemRow = (event: KeyboardEvent<HTMLElement>, action: () => void) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      action()
+    }
+  }
+
+  const addCatalogItem = (itemId: number) => {
+    if (record.numitems >= 30) {
+      return
+    }
+    updateRecord((draft) => { addItem(draft, itemId) })
+    setSelectedInventory(record.numitems)
+  }
+
+  const moveInventoryItem = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) {
+      return
+    }
+    updateRecord((draft) => { moveItem(draft, fromIndex, toIndex) })
+    setSelectedInventory(toIndex)
+  }
+
+  const allowItemDrop = (event: DragEvent<HTMLElement>) => {
+    const types = Array.from(event.dataTransfer.types)
+    if (types.includes(catalogDragType) || types.includes(inventoryDragType) || dragPayload.current) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = types.includes(catalogDragType) || dragPayload.current?.catalogItemId ? 'copy' : 'move'
+    }
+  }
+
+  const handleInventoryDrop = (event: DragEvent<HTMLElement>, toIndex = Math.max(0, inventory.length - 1)) => {
+    event.preventDefault()
+    const catalogItemData = event.dataTransfer.getData(catalogDragType)
+    const itemId = catalogItemData ? Number(catalogItemData) : dragPayload.current?.catalogItemId
+    if (typeof itemId === 'number' && Number.isFinite(itemId) && itemId > 0) {
+      dragPayload.current = null
+      addCatalogItem(itemId)
+      return
+    }
+    const inventoryIndexData = event.dataTransfer.getData(inventoryDragType)
+    const fromIndex = inventoryIndexData ? Number(inventoryIndexData) : dragPayload.current?.inventoryIndex
+    dragPayload.current = null
+    if (typeof fromIndex === 'number' && Number.isInteger(fromIndex) && inventory.length > 0) {
+      moveInventoryItem(fromIndex, Math.min(Math.max(toIndex, 0), inventory.length - 1))
+    }
+  }
 
   return (
     <div className="items-layout">
       <Panel title={`Inventory ${record.numitems}/30 - Load ${record.load}/${record.loadmax}`}>
-        <div className="list">
+        <div className="list inventory-dropzone" onDragOver={allowItemDrop} onDrop={handleInventoryDrop}>
           {inventory.map((item, index) => (
-            <button
+            <div
               key={`${item.id}-${index}`}
-              type="button"
+              role="button"
+              tabIndex={0}
+              aria-selected={index === selectedInventory}
               className={`item-row ${index === selectedInventory ? 'selected' : ''}`}
-              onClick={() => setSelectedInventory(index)}
+              draggable
+              onPointerDown={() => {
+                dragPayload.current = { inventoryIndex: index }
+              }}
+              onDragStart={(event) => {
+                dragPayload.current = { inventoryIndex: index }
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData(inventoryDragType, String(index))
+              }}
+              onDragEnd={() => { dragPayload.current = null }}
+              onDragOver={allowItemDrop}
+              onDrop={(event) => {
+                event.stopPropagation()
+                handleInventoryDrop(event, index)
+              }}
+              onClick={() => {
+                dragPayload.current = null
+                setSelectedInventory(index)
+              }}
+              onKeyDown={(event) => activateItemRow(event, () => setSelectedInventory(index))}
             >
               <ItemIcon item={itemById(item.id)} identified={!!item.ident} />
               <span>{item.ident ? '*' : '?'} {itemName(item.id, !!item.ident)}</span>
               <b>chg {item.charge}</b>
-            </button>
+            </div>
           ))}
         </div>
         {selectedInventoryItem && (
@@ -583,27 +666,56 @@ function ItemsTab({
         )}
       </Panel>
       <Panel title="Catalog">
-        <div className="segmented">
-          {itemCategoryLabels.map((entry) => (
-            <button key={entry.id} type="button" className={entry.id === category ? 'active' : ''} onClick={() => { setCategory(entry.id); setSelectedCatalogId(null) }}>{entry.label}</button>
-          ))}
+        <div className="catalog-controls">
+          <div className="segmented">
+            {itemCategoryLabels.map((entry) => (
+              <button key={entry.id} type="button" className={entry.id === category ? 'active' : ''} onClick={() => { setCategory(entry.id); setSelectedCatalogId(null) }}>{entry.label}</button>
+            ))}
+          </div>
+          <label className="usable-toggle">
+            <strong>Usable</strong>
+            <input
+              type="checkbox"
+              checked={usableOnly}
+              onChange={(event) => {
+                setUsableOnly(event.target.checked)
+                setSelectedCatalogId(null)
+              }}
+            />
+          </label>
         </div>
         <input className="search" value={filter} placeholder="Filter catalog" onChange={(event) => setFilter(event.target.value)} />
         <div className="list catalog">
-          {catalog.slice(0, 80).map((item) => (
-            <button
+          {catalog.map((item) => (
+            <div
               key={item.id}
-              type="button"
+              role="button"
+              tabIndex={0}
+              aria-selected={item.id === selectedCatalogId}
               className={`item-row ${item.id === selectedCatalogId ? 'selected' : ''}`}
-              onClick={() => setSelectedCatalogId(item.id)}
+              draggable
+              onPointerDown={() => {
+                dragPayload.current = { catalogItemId: item.id }
+              }}
+              onDragStart={(event) => {
+                dragPayload.current = { catalogItemId: item.id }
+                event.dataTransfer.effectAllowed = 'copy'
+                event.dataTransfer.setData(catalogDragType, String(item.id))
+              }}
+              onDragEnd={() => { dragPayload.current = null }}
+              onClick={() => {
+                dragPayload.current = null
+                setSelectedCatalogId(item.id)
+              }}
+              onKeyDown={(event) => activateItemRow(event, () => setSelectedCatalogId(item.id))}
             >
               <ItemIcon item={item} />
               <span>{item.name}</span>
               <b>{item.id}</b>
-            </button>
+            </div>
           ))}
         </div>
-        <button type="button" disabled={!selectedCatalogItem} onClick={() => selectedCatalogItem && updateRecord((draft) => { addItem(draft, selectedCatalogItem.id) })}>Add Selected</button>
+        <button type="button" disabled={!selectedCatalogItem} onClick={() => selectedCatalogItem && addCatalogItem(selectedCatalogItem.id)}>Add Selected</button>
       </Panel>
       <Panel title="Item Detail">
         {detail ? (

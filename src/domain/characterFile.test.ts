@@ -18,6 +18,7 @@ import {
   applyCharacterMutation,
   clearBadEffects,
   levelUpCharacter,
+  moveItem,
   removeItem,
   spellProgressionForCaste,
   type LevelUpResult,
@@ -359,5 +360,22 @@ describe('Realmz character binary format', () => {
     expect(edited.armor[2]).toBe(0)
     expect(edited.nohands).toBe(0)
     expect(edited.weaponnum).toBe(0)
+  })
+
+  it('reorders active inventory slots without changing spare item slots', () => {
+    const record = testRecord({
+      numitems: 3,
+      items: [
+        { id: 1, equip: 0, ident: 1, charge: -1 },
+        { id: 805, equip: 0, ident: 1, charge: 6 },
+        { id: 177, equip: 0, ident: 1, charge: -1 },
+        ...Array.from({ length: MAX_ITEMS - 3 }, () => ({ id: 0, equip: 0, ident: 0, charge: 0 })),
+      ],
+    })
+
+    expect(moveItem(record, 0, 2)).toBe(true)
+    expect(record.numitems).toBe(3)
+    expect(record.items.slice(0, 3).map((item) => item.id)).toEqual([805, 177, 1])
+    expect(record.items.slice(3)).toEqual(Array.from({ length: MAX_ITEMS - 3 }, () => ({ id: 0, equip: 0, ident: 0, charge: 0 })))
   })
 })

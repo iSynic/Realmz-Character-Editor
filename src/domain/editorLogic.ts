@@ -276,6 +276,25 @@ export function removeItem(record: CharacterRecord, index: number): boolean {
   return true
 }
 
+export function moveItem(record: CharacterRecord, fromIndex: number, toIndex: number): boolean {
+  normalizeInventory(record)
+  if (fromIndex < 0 || fromIndex >= record.numitems || toIndex < 0 || toIndex >= record.numitems) {
+    return false
+  }
+  if (fromIndex === toIndex) {
+    return true
+  }
+  const activeItems = record.items.slice(0, record.numitems)
+  const [moved] = activeItems.splice(fromIndex, 1)
+  activeItems.splice(toIndex, 0, moved)
+  record.items = activeItems
+  while (record.items.length < MAX_ITEMS) {
+    record.items.push(blankItem())
+  }
+  normalizeInventory(record)
+  return true
+}
+
 export function pairedCombatIconForPortrait(portraitId: number): number {
   return portraitId + 8743
 }

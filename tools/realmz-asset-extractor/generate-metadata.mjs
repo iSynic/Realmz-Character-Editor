@@ -284,6 +284,12 @@ function itemAttr(data, offset) {
     ismagical: i16(data, offset + 34),
     itemcat0: i32(data, offset + 36),
     itemcat1: i32(data, offset + 40),
+    racerestrictions: i16(data, offset + 44),
+    casterestrictions: i16(data, offset + 46),
+    specificrace: i16(data, offset + 48),
+    specificcaste: i16(data, offset + 50),
+    raceclassonly: i16(data, offset + 52),
+    casteclassonly: i16(data, offset + 54),
     xcharge: i16(data, offset + 96),
     drop: i16(data, offset + 98),
   }
@@ -352,6 +358,13 @@ function parseItems(strings) {
         nohands: attr.nohands,
         xcharge: attr.xcharge,
         drop: attr.drop,
+        itemcat: [attr.itemcat0, attr.itemcat1],
+        raceRestrictions: attr.racerestrictions,
+        casteRestrictions: attr.casterestrictions,
+        specificRace: attr.specificrace,
+        specificCaste: attr.specificcaste,
+        raceClassOnly: attr.raceclassonly,
+        casteClassOnly: attr.casteclassonly,
       })
     }
   }
@@ -407,6 +420,8 @@ function parseRaceProfiles(strings) {
       id,
       name: str(strings, 129, id, `Race ${id}`),
       numOfAttacks: i16Array(data, offset + 204, 2),
+      itemtypes: i32Array(data, offset + 336, 2),
+      descriptors: i16(data, offset + 344),
     }
   })
 }
@@ -435,6 +450,8 @@ function parseCasteProfiles(strings) {
       bonusAttacks: i16(data, offset + 258),
       victory: i32Array(data, offset + 264, 30),
       attacks: i8Array(data, offset + 426, 10),
+      casteClass: i16(data, offset + 248),
+      itemtypes: i32Array(data, offset + 436, 2),
     }
   })
 }

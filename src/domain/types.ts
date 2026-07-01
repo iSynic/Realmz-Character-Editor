@@ -150,6 +150,13 @@ export interface ItemMetadata {
   nohands: number
   xcharge: number
   drop: number
+  itemcat: number[]
+  raceRestrictions: number
+  casteRestrictions: number
+  specificRace: number
+  specificCaste: number
+  raceClassOnly: number
+  casteClassOnly: number
 }
 
 export interface NamedId {
@@ -169,6 +176,8 @@ export interface RaceProfile {
   id: number
   name: string
   numOfAttacks: number[]
+  itemtypes: number[]
+  descriptors: number
 }
 
 export interface CasteProfile {
@@ -186,6 +195,8 @@ export interface CasteProfile {
   bonusAttacks: number
   victory: number[]
   attacks: number[]
+  casteClass: number
+  itemtypes: number[]
 }
 
 export interface RealmzMetadata {
